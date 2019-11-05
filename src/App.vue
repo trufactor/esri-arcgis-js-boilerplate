@@ -10,11 +10,21 @@ export default {
   data(){
     return {
       db: new Trufactor({domain: 'demo'}),
-      layer: {
+      heatmapLayer: {
         title: 'TruFactor Boilerplate',
         copyright: 'TruFactor',
+        objectIdField: 'ObjectId',
+        fields: [
+          {name: 'ObjectId', type: 'oid'},
+          {name: 'date', type: 'string'},
+          {name: 'total', type: 'integer'}
+        ],
+        popupTemplate: {
+          content: '{date}: {total}'
+        },
         renderer: {
           type: 'heatmap',
+          field: 'total',
           colorStops: [
             { color: "rgba(63, 40, 102, 0)", ratio: 0 },
             { color: "#472b77", ratio: 0.083 },
@@ -30,12 +40,12 @@ export default {
             { color: "#e0cf40", ratio: 0.913 },
             { color: "#ffff00", ratio: 1 }
           ],
-          maxPixelIntensity: 25,
+          maxPixelIntensity: 1000000,
           minPixelIntensity: 0
         }
       },
       options: {
-        zoom: 3,
+        zoom: 4,
         container: 'map',
         center: [-98.5, 39.8]
       }
@@ -47,41 +57,41 @@ export default {
     // types instead of ES2015 imports.
     loadESRI([
       'esri/Map',
-      'esri/layers/GeoJSONLayer',
+      'esri/layers/FeatureLayer',
       'esri/views/MapView',
       'esri/Graphic'
     ])
-      .then(([Map, GeoJSONLayer, MapView, Graphic])=>{
+      .then(([Map, FeatureLayer, MapView, Graphic])=>{
         const map = new Map({basemap: 'gray'}),
               view = new MapView({map,...this.options});
 
         // this is a lifecycle hook called after the api caches the returned
         // data on the client
         this.db.afterGetData = ({data})=>{
-          view.graphics.addMany(
-            data.features.map(feature=>{
-              return new Graphic({
-                geometry: {
-                  type: 'polygon',
-                  rings: feature.geometry.coordinates[0]
-                },
-                attributes: {
-                  ObjectId: feature.properties.index,
-                  date: feature.properties.date,
-                  total: feature.properties.total
-                },
-                symbol: {
-                  type: "simple-fill", // autocasts as new SimpleFillSymbol()
-                  color: [227, 139, 79, 0.3],
-                  outline: {
-                    // autocasts as new SimpleLineSymbol()
-                    color: [255, 255, 255],
-                    width: 1
-                  }
-                }
-              });
-            })
-          );
+          const source = data.features.reduce((features,feature)=>{
+            return [
+              ...features,
+              ...feature.geometry.coordinates[0][0].reduce((points,point)=>{
+                return [
+                  ...points,
+                  new Graphic({
+                    geometry: {
+                      type: 'point',
+                      x: point[0],
+                      y: point[1]
+                    },
+                    attributes: {
+                      ObjectId: feature.properties.index,
+                      date: feature.properties.date,
+                      total: feature.properties.total
+                    }
+                  })
+                ];
+              },[])
+            ];
+          },[]);
+
+          map.add(new FeatureLayer({source,...this.heatmapLayer}));
         };
 
         // go ahead and initialize the first api data call
@@ -96,32 +106,6 @@ export default {
         // ensure we catch any errors if the ESRI modules change and become inconsistent
         console.error(err);
       });
-    /*
-    this.map = new mapboxgl.Map(this.options); //initialize map
-
-    // this lifecycle hooks is called when mapbox is loaded and ready
-    this.map.on('load',()=>{
-      this.map.addSource('trufactor-data',this.trufactorData);
-      this.map.addLayer(this.heatmapLayer);
-
-      // this is a lifecycle hook called after the api caches the returned
-      // data on the client
-      this.db.afterGetData = ({data})=>{
-
-        // update the maps data
-        this.trufactorData.data.features = data.features||[];
-
-        // update mapbox to reflect the data change
-        this.map.getSource('trufactor-data').setData(this.trufactorData.data);
-
-      };
-
-      // go ahead and initialize the first api data call
-      this.db.getData({
-        zoom: this.map.getZoom()/22, //normalize level between 0 & 1
-        query: this.map.getBounds()
-      });
-    });*/
   }
 };
 </script>
